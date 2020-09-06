@@ -28,13 +28,12 @@ namespace Coinbot.Binance
         }
         public async Task<ServiceResponse<Transaction>> GetOrder(string baseCoin, string targetCoin, string apiKey, string secret, string orderRefId)
         {
-            using (HttpClient client = new HttpClient())
+            try
             {
-                client.BaseAddress = new Uri(_serviceUrl);
 
-                var apiUrl = "api/v3/order?";
+                var apiUrl = "api/v3/order";
 
-                var reqUrl = string.Format(CultureInfo.InvariantCulture, "symbol={0}{1}&origClientOrderId={2}&recvWindow={4}&timestamp={3}",
+                var reqUrl = string.Format(CultureInfo.InvariantCulture, "?symbol={0}{1}&origClientOrderId={2}&recvWindow={4}&timestamp={3}",
                     targetCoin,
                     baseCoin,
                     orderRefId,
@@ -43,9 +42,9 @@ namespace Coinbot.Binance
                 );
 
                 var apiSign = Helpers.GetHashSHA256(reqUrl, secret);
-                client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
+                _client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
 
-                var response = await client.GetAsync(apiUrl + reqUrl + $"&signature={apiSign}");
+                var response = await _client.GetAsync(apiUrl + reqUrl + $"&signature={apiSign}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -57,6 +56,14 @@ namespace Coinbot.Binance
                 }
                 else
                     return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
+            }
+            catch (HttpRequestException ex)
+            {
+                return new ServiceResponse<Transaction>(-1, null, "Network problems.");
+            }
+            catch
+            {
+                throw;
             }
         }
 
@@ -70,10 +77,11 @@ namespace Coinbot.Binance
 
         public async Task<ServiceResponse<Tick>> GetTicker(string baseCoin, string targetCoin)
         {
-            using (HttpClient client = new HttpClient())
+
+            try
             {
-                client.BaseAddress = new Uri(_serviceUrl);
-                var response = await client.GetAsync(string.Format("api/v3/ticker/price?symbol={1}{0}", baseCoin, targetCoin));
+
+                var response = await _client.GetAsync(string.Format("api/v3/ticker/price?symbol={1}{0}", baseCoin, targetCoin));
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -85,13 +93,22 @@ namespace Coinbot.Binance
                 else
                     return new ServiceResponse<Tick>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
             }
+            catch (HttpRequestException ex)
+            {
+                return new ServiceResponse<Tick>(-1, null, "Network problems.");
+            }
+            catch
+            {
+                throw;
+            }
+
         }
 
         public async Task<ServiceResponse<Transaction>> PlaceBuyOrder(string baseCoin, string targetCoin, double stack, string apiKey, string secret, double rate, bool? testOnly = false)
         {
-            using (HttpClient client = new HttpClient())
+
+            try
             {
-                client.BaseAddress = new Uri(_serviceUrl);
 
                 var apiUrl = $"api/v3/order{(testOnly.Value ? "/test" : string.Empty)}";
 
@@ -107,11 +124,11 @@ namespace Coinbot.Binance
                 keyValues.Add(new KeyValuePair<string, string>("timestamp", Helpers.GetUnixTimeInMilliseconds().ToString()));
 
                 var apiSign = Helpers.GetHashSHA256(string.Join("&", keyValues.Select(x => $"{x.Key}={x.Value}")), secret);
-                client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
+                _client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
 
                 keyValues.Add(new KeyValuePair<string, string>("signature", apiSign));
 
-                var response = await client.PostAsync(apiUrl, new FormUrlEncodedContent(keyValues));
+                var response = await _client.PostAsync(apiUrl, new FormUrlEncodedContent(keyValues));
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -123,16 +140,22 @@ namespace Coinbot.Binance
                 else
                     return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
             }
+            catch (HttpRequestException ex)
+            {
+                return new ServiceResponse<Transaction>(-1, null, "Network problems.");
+            }
+            catch
+            {
+                throw;
+            }
+
         }
 
         public async Task<ServiceResponse<Transaction>> PlaceSellOrder(string baseCoin, string targetCoin, double stack, string apiKey, string secret, double qty, double toSellFor, double? raisedChangeToSell = null, bool? testOnly = false)
         {
-            using (HttpClient client = new HttpClient())
+            try
             {
-                client.BaseAddress = new Uri(_serviceUrl);
-
                 var apiUrl = $"api/v3/order{(testOnly.Value ? "/test" : string.Empty)}";
-
                 var keyValues = new List<KeyValuePair<string, string>>();
 
                 keyValues.Add(new KeyValuePair<string, string>("symbol", targetCoin + baseCoin));
@@ -145,11 +168,11 @@ namespace Coinbot.Binance
                 keyValues.Add(new KeyValuePair<string, string>("timestamp", Helpers.GetUnixTimeInMilliseconds().ToString()));
 
                 var apiSign = Helpers.GetHashSHA256(string.Join("&", keyValues.Select(x => $"{x.Key}={x.Value}")), secret);
-                client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
+                _client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
 
                 keyValues.Add(new KeyValuePair<string, string>("signature", apiSign));
 
-                var response = await client.PostAsync(apiUrl, new FormUrlEncodedContent(keyValues));
+                var response = await _client.PostAsync(apiUrl, new FormUrlEncodedContent(keyValues));
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -162,6 +185,15 @@ namespace Coinbot.Binance
                 else
                     return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
             }
+            catch (HttpRequestException ex)
+            {
+                return new ServiceResponse<Transaction>(-1, null, "Network problems.");
+            }
+            catch
+            {
+                throw;
+            }
+
         }
     }
 }
