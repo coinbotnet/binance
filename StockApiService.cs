@@ -21,11 +21,45 @@ namespace Coinbot.Binance
         private readonly IMapper _mapper;
         private readonly HttpClient _client = new HttpClient();
 
+        private ExchangeInfo _info = null;
+
         public StockApiService(IMapper mapper)
         {
             _mapper = mapper;
             _client.BaseAddress = new Uri(_serviceUrl);
+            var res = GetExchangeInfo().Result;
+
+            if (res.Success)
+                _info = res.Data;
         }
+
+        private async Task<ServiceResponse<ExchangeInfo>> GetExchangeInfo()
+        {
+            try
+            {
+
+                var response = await _client.GetAsync("api/v3/exchangeInfo");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    var deserialized = JsonConvert.DeserializeObject<ExchangeInfo>(json);
+
+                    return new ServiceResponse<ExchangeInfo>(0, deserialized, "OK");
+                }
+                else
+                    return new ServiceResponse<ExchangeInfo>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
+            }
+            catch (HttpRequestException ex)
+            {
+                return new ServiceResponse<ExchangeInfo>(-1, null, "Network problems.");
+            }
+            catch
+            {
+                throw;
+            }
+        }
+
         public async Task<ServiceResponse<Transaction>> GetOrder(string baseCoin, string targetCoin, string apiKey, string secret, string orderRefId)
         {
             try
@@ -110,35 +144,47 @@ namespace Coinbot.Binance
             try
             {
 
-                var apiUrl = $"api/v3/order{(testOnly.Value ? "/test" : string.Empty)}";
+                var symbolInfo = _info.symbols.FirstOrDefault(x => x.baseAsset == targetCoin && x.quoteAsset == baseCoin);
 
-                var keyValues = new List<KeyValuePair<string, string>>();
-
-                keyValues.Add(new KeyValuePair<string, string>("symbol", targetCoin + baseCoin));
-                keyValues.Add(new KeyValuePair<string, string>("side", "BUY"));
-                keyValues.Add(new KeyValuePair<string, string>("type", "LIMIT"));
-                keyValues.Add(new KeyValuePair<string, string>("timeInForce", "GTC"));
-                keyValues.Add(new KeyValuePair<string, string>("quantity", (stack / rate).ToString("0.00000000", CultureInfo.InvariantCulture)));
-                keyValues.Add(new KeyValuePair<string, string>("price", rate.ToString("0.00000000", CultureInfo.InvariantCulture)));
-                keyValues.Add(new KeyValuePair<string, string>("recvWindow", _recvWindow.ToString()));
-                keyValues.Add(new KeyValuePair<string, string>("timestamp", Helpers.GetUnixTimeInMilliseconds().ToString()));
-
-                var apiSign = Helpers.GetHashSHA256(string.Join("&", keyValues.Select(x => $"{x.Key}={x.Value}")), secret);
-                _client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
-
-                keyValues.Add(new KeyValuePair<string, string>("signature", apiSign));
-
-                var response = await _client.PostAsync(apiUrl, new FormUrlEncodedContent(keyValues));
-
-                if (response.IsSuccessStatusCode)
+                if (symbolInfo != null)
                 {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var deserialized = JsonConvert.DeserializeObject<TransactionMadeDTO>(json);
+                    var filter = symbolInfo.filters.FirstOrDefault(x=>x.filterType == "LOT_SIZE");
 
-                    return new ServiceResponse<Transaction>(0, _mapper.Map<Transaction>(deserialized), json);
+                    var filteredStack = ((int)((stack / rate) / filter.stepSize)) * filter.stepSize;
+
+                    var apiUrl = $"api/v3/order{(testOnly.Value ? "/test" : string.Empty)}";
+
+                    var keyValues = new List<KeyValuePair<string, string>>();
+
+                    keyValues.Add(new KeyValuePair<string, string>("symbol", targetCoin + baseCoin));
+                    keyValues.Add(new KeyValuePair<string, string>("side", "BUY"));
+                    keyValues.Add(new KeyValuePair<string, string>("type", "LIMIT"));
+                    keyValues.Add(new KeyValuePair<string, string>("timeInForce", "GTC"));
+                    keyValues.Add(new KeyValuePair<string, string>("quantity", filteredStack.ToString("0.00000000", CultureInfo.InvariantCulture)));
+                    keyValues.Add(new KeyValuePair<string, string>("price", rate.ToString("0.00000000", CultureInfo.InvariantCulture)));
+                    keyValues.Add(new KeyValuePair<string, string>("recvWindow", _recvWindow.ToString()));
+                    keyValues.Add(new KeyValuePair<string, string>("timestamp", Helpers.GetUnixTimeInMilliseconds().ToString()));
+
+                    var apiSign = Helpers.GetHashSHA256(string.Join("&", keyValues.Select(x => $"{x.Key}={x.Value}")), secret);
+                    _client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
+
+                    keyValues.Add(new KeyValuePair<string, string>("signature", apiSign));
+
+                    var response = await _client.PostAsync(apiUrl, new FormUrlEncodedContent(keyValues));
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var json = await response.Content.ReadAsStringAsync();
+                        var deserialized = JsonConvert.DeserializeObject<TransactionMadeDTO>(json);
+
+                        return new ServiceResponse<Transaction>(0, _mapper.Map<Transaction>(deserialized), json);
+                    }
+                    else
+                        return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
+
                 }
                 else
-                    return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
+                    return new ServiceResponse<Transaction>(167, null, "Problem getting correct stack size");
             }
             catch (HttpRequestException ex)
             {
