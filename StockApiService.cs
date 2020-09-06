@@ -87,13 +87,13 @@ namespace Coinbot.Binance
             }
         }
 
-        public async Task<ServiceResponse<Transaction>> PlaceBuyOrder(string baseCoin, string targetCoin, double stack, string apiKey, string secret, double rate)
+        public async Task<ServiceResponse<Transaction>> PlaceBuyOrder(string baseCoin, string targetCoin, double stack, string apiKey, string secret, double rate, bool? testOnly = false)
         {
             using (HttpClient client = new HttpClient())
             {
                 client.BaseAddress = new Uri(_serviceUrl);
 
-                var apiUrl = "api/v3/order";
+                var apiUrl = $"api/v3/order{(testOnly.Value ? "/test" : string.Empty)}";
 
                 var keyValues = new List<KeyValuePair<string, string>>();
 
@@ -101,8 +101,8 @@ namespace Coinbot.Binance
                 keyValues.Add(new KeyValuePair<string, string>("side", "BUY"));
                 keyValues.Add(new KeyValuePair<string, string>("type", "LIMIT"));
                 keyValues.Add(new KeyValuePair<string, string>("timeInForce", "GTC"));
-                keyValues.Add(new KeyValuePair<string, string>("quantity", Math.Ceiling(stack / rate).ToString("0.##############", CultureInfo.InvariantCulture)));
-                keyValues.Add(new KeyValuePair<string, string>("price", rate.ToString("0.##############", CultureInfo.InvariantCulture)));
+                keyValues.Add(new KeyValuePair<string, string>("quantity", (stack / rate).ToString("0.00", CultureInfo.InvariantCulture)));
+                keyValues.Add(new KeyValuePair<string, string>("price", rate.ToString("0.00000000", CultureInfo.InvariantCulture)));
                 keyValues.Add(new KeyValuePair<string, string>("recvWindow", _recvWindow.ToString()));
                 keyValues.Add(new KeyValuePair<string, string>("timestamp", Helpers.GetUnixTimeInMilliseconds().ToString()));
 
@@ -125,13 +125,13 @@ namespace Coinbot.Binance
             }
         }
 
-        public async Task<ServiceResponse<Transaction>> PlaceSellOrder(string baseCoin, string targetCoin, double stack, string apiKey, string secret, double qty, double toSellFor, double? raisedChangeToSell = null)
+        public async Task<ServiceResponse<Transaction>> PlaceSellOrder(string baseCoin, string targetCoin, double stack, string apiKey, string secret, double qty, double toSellFor, double? raisedChangeToSell = null, bool? testOnly = false)
         {
             using (HttpClient client = new HttpClient())
             {
                 client.BaseAddress = new Uri(_serviceUrl);
 
-                var apiUrl = "api/v3/order";
+                var apiUrl = $"api/v3/order{(testOnly.Value ? "/test" : string.Empty)}";
 
                 var keyValues = new List<KeyValuePair<string, string>>();
 
@@ -139,8 +139,8 @@ namespace Coinbot.Binance
                 keyValues.Add(new KeyValuePair<string, string>("side", "SELL"));
                 keyValues.Add(new KeyValuePair<string, string>("type", "LIMIT"));
                 keyValues.Add(new KeyValuePair<string, string>("timeInForce", "GTC"));
-                keyValues.Add(new KeyValuePair<string, string>("quantity", qty.ToString("0.##############", CultureInfo.InvariantCulture)));
-                keyValues.Add(new KeyValuePair<string, string>("price", raisedChangeToSell == null ? toSellFor.ToString("0.##############", CultureInfo.InvariantCulture) : raisedChangeToSell.Value.ToString("0.##############", CultureInfo.InvariantCulture)));
+                keyValues.Add(new KeyValuePair<string, string>("quantity", qty.ToString("0.00", CultureInfo.InvariantCulture)));
+                keyValues.Add(new KeyValuePair<string, string>("price", raisedChangeToSell == null ? toSellFor.ToString("0.00000000", CultureInfo.InvariantCulture) : raisedChangeToSell.Value.ToString("0.00000000", CultureInfo.InvariantCulture)));
                 keyValues.Add(new KeyValuePair<string, string>("recvWindow", _recvWindow.ToString()));
                 keyValues.Add(new KeyValuePair<string, string>("timestamp", Helpers.GetUnixTimeInMilliseconds().ToString()));
 
