@@ -19,7 +19,12 @@ namespace Coinbot.Binance
         private readonly string _serviceUrl = "https://api.binance.com/";
         private readonly int _recvWindow = 60000;
         private readonly IMapper _mapper;
-        private readonly HttpClient _client = new HttpClient();
+        private readonly HttpClient _client = new HttpClient(new HttpClientHandler
+        {
+            AllowAutoRedirect = true,
+            UseCookies = false,
+            AutomaticDecompression = System.Net.DecompressionMethods.GZip
+        });
 
         private ExchangeInfo _info = null;
 
@@ -27,6 +32,7 @@ namespace Coinbot.Binance
         {
             _mapper = mapper;
             _client.BaseAddress = new Uri(_serviceUrl);
+
             var res = GetExchangeInfo().Result;
 
             if (res.Success)
@@ -65,9 +71,9 @@ namespace Coinbot.Binance
             try
             {
 
-                var apiUrl = "api/v3/order";
+                var apiUrl = "api/v3/order?";
 
-                var reqUrl = string.Format(CultureInfo.InvariantCulture, "?symbol={0}{1}&origClientOrderId={2}&recvWindow={4}&timestamp={3}",
+                var reqUrl = string.Format(CultureInfo.InvariantCulture, "symbol={0}{1}&origClientOrderId={2}&recvWindow={4}&timestamp={3}",
                     targetCoin,
                     baseCoin,
                     orderRefId,
@@ -148,7 +154,7 @@ namespace Coinbot.Binance
 
                 if (symbolInfo != null)
                 {
-                    var filter = symbolInfo.filters.FirstOrDefault(x=>x.filterType == "LOT_SIZE");
+                    var filter = symbolInfo.filters.FirstOrDefault(x => x.filterType == "LOT_SIZE");
 
                     var filteredStack = ((int)((stack / rate) / filter.stepSize)) * filter.stepSize;
 
