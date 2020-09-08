@@ -26,43 +26,29 @@ namespace Coinbot.Binance
             AutomaticDecompression = System.Net.DecompressionMethods.GZip
         });
 
-        private ExchangeInfo _info = null;
+        private Lazy<Task<ExchangeInfo>> _info = null;
 
         public StockApiService(IMapper mapper)
         {
             _mapper = mapper;
             _client.BaseAddress = new Uri(_serviceUrl);
-
-            var res = GetExchangeInfo().Result;
-
-            if (res.Success)
-                _info = res.Data;
+            _info = new Lazy<Task<ExchangeInfo>>(GetExchangeInfo);
         }
 
-        private async Task<ServiceResponse<ExchangeInfo>> GetExchangeInfo()
+
+        private async Task<ExchangeInfo> GetExchangeInfo()
         {
-            try
+            using (var response = await _client.GetAsync("api/v3/exchangeInfo"))
             {
-
-                var response = await _client.GetAsync("api/v3/exchangeInfo");
-
                 if (response.IsSuccessStatusCode)
                 {
                     var json = await response.Content.ReadAsStringAsync();
                     var deserialized = JsonConvert.DeserializeObject<ExchangeInfo>(json);
 
-                    return new ServiceResponse<ExchangeInfo>(0, deserialized, "OK");
+                    return deserialized;
                 }
                 else
-                    return new ServiceResponse<ExchangeInfo>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
-            }
-            catch (HttpRequestException ex)
-            {
-                return new ServiceResponse<ExchangeInfo>(-1, null, "Network problems.");
-            }
-            catch
-            {
-                throw;
+                    throw new Exception("Couldn't get exchange info");
             }
         }
 
@@ -71,8 +57,6 @@ namespace Coinbot.Binance
             try
             {
 
-                var apiUrl = "api/v3/order?";
-
                 var reqUrl = string.Format(CultureInfo.InvariantCulture, "symbol={0}{1}&origClientOrderId={2}&recvWindow={4}&timestamp={3}",
                     targetCoin,
                     baseCoin,
@@ -80,22 +64,26 @@ namespace Coinbot.Binance
                     Helpers.GetUnixTimeInMilliseconds(),
                     _recvWindow
                 );
-
                 var apiSign = Helpers.GetHashSHA256(reqUrl, secret);
-                _client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
 
-                var response = await _client.GetAsync(apiUrl + reqUrl + $"&signature={apiSign}");
-
-                if (response.IsSuccessStatusCode)
+                using (var request = new HttpRequestMessage(HttpMethod.Get, "api/v3/order?" + reqUrl + $"&signature={apiSign}"))
                 {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var deserialized = JsonConvert.DeserializeObject<TransactionDTO>(json);
+                    request.Headers.Add("X-MBX-APIKEY", apiKey);
 
-                    return new ServiceResponse<Transaction>(0, _mapper.Map<TransactionDTO, Transaction>(deserialized), json);
+                    using (var response = await _client.SendAsync(request))
+                    {
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var json = await response.Content.ReadAsStringAsync();
+                            var deserialized = JsonConvert.DeserializeObject<TransactionDTO>(json);
 
+                            return new ServiceResponse<Transaction>(0, _mapper.Map<TransactionDTO, Transaction>(deserialized), json);
+
+                        }
+                        else
+                            return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
+                    }
                 }
-                else
-                    return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
             }
             catch (HttpRequestException ex)
             {
@@ -120,18 +108,18 @@ namespace Coinbot.Binance
 
             try
             {
-
-                var response = await _client.GetAsync(string.Format("api/v3/ticker/price?symbol={1}{0}", baseCoin, targetCoin));
-
-                if (response.IsSuccessStatusCode)
+                using (var response = await _client.GetAsync(string.Format("api/v3/ticker/price?symbol={1}{0}", baseCoin, targetCoin)))
                 {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var deserialized = JsonConvert.DeserializeObject<TickDTOResult>(json);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var json = await response.Content.ReadAsStringAsync();
+                        var deserialized = JsonConvert.DeserializeObject<TickDTOResult>(json);
 
-                    return new ServiceResponse<Tick>(0, _mapper.Map<Tick>(deserialized), json);
+                        return new ServiceResponse<Tick>(0, _mapper.Map<Tick>(deserialized), json);
+                    }
+                    else
+                        return new ServiceResponse<Tick>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
                 }
-                else
-                    return new ServiceResponse<Tick>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
             }
             catch (HttpRequestException ex)
             {
@@ -150,7 +138,7 @@ namespace Coinbot.Binance
             try
             {
 
-                var symbolInfo = _info.symbols.FirstOrDefault(x => x.baseAsset == targetCoin && x.quoteAsset == baseCoin);
+                var symbolInfo = (await _info.Value).symbols.FirstOrDefault(x => x.baseAsset == targetCoin && x.quoteAsset == baseCoin);
 
                 if (symbolInfo != null)
                 {
@@ -172,21 +160,26 @@ namespace Coinbot.Binance
                     keyValues.Add(new KeyValuePair<string, string>("timestamp", Helpers.GetUnixTimeInMilliseconds().ToString()));
 
                     var apiSign = Helpers.GetHashSHA256(string.Join("&", keyValues.Select(x => $"{x.Key}={x.Value}")), secret);
-                    _client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
-
                     keyValues.Add(new KeyValuePair<string, string>("signature", apiSign));
 
-                    var response = await _client.PostAsync(apiUrl, new FormUrlEncodedContent(keyValues));
-
-                    if (response.IsSuccessStatusCode)
+                    using (var request = new HttpRequestMessage(HttpMethod.Post, apiUrl))
                     {
-                        var json = await response.Content.ReadAsStringAsync();
-                        var deserialized = JsonConvert.DeserializeObject<TransactionMadeDTO>(json);
+                        request.Headers.Add("X-MBX-APIKEY", apiKey);
+                        request.Content = new FormUrlEncodedContent(keyValues);
 
-                        return new ServiceResponse<Transaction>(0, _mapper.Map<Transaction>(deserialized), json);
+                        using (var response = await _client.SendAsync(request))
+                        {
+                            if (response.IsSuccessStatusCode)
+                            {
+                                var json = await response.Content.ReadAsStringAsync();
+                                var deserialized = JsonConvert.DeserializeObject<TransactionMadeDTO>(json);
+
+                                return new ServiceResponse<Transaction>(0, _mapper.Map<Transaction>(deserialized), json);
+                            }
+                            else
+                                return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
+                        }
                     }
-                    else
-                        return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
 
                 }
                 else
@@ -220,22 +213,27 @@ namespace Coinbot.Binance
                 keyValues.Add(new KeyValuePair<string, string>("timestamp", Helpers.GetUnixTimeInMilliseconds().ToString()));
 
                 var apiSign = Helpers.GetHashSHA256(string.Join("&", keyValues.Select(x => $"{x.Key}={x.Value}")), secret);
-                _client.DefaultRequestHeaders.Add("X-MBX-APIKEY", apiKey);
-
                 keyValues.Add(new KeyValuePair<string, string>("signature", apiSign));
 
-                var response = await _client.PostAsync(apiUrl, new FormUrlEncodedContent(keyValues));
-
-                if (response.IsSuccessStatusCode)
+                using (var request = new HttpRequestMessage(HttpMethod.Post, apiUrl))
                 {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var deserialized = JsonConvert.DeserializeObject<TransactionMadeDTO>(json);
+                    request.Headers.Add("X-MBX-APIKEY", apiKey);
+                    request.Content = new FormUrlEncodedContent(keyValues);
 
-                    return new ServiceResponse<Transaction>(0, _mapper.Map<Transaction>(deserialized), json);
+                    using (var response = await _client.SendAsync(request))
+                    {
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var json = await response.Content.ReadAsStringAsync();
+                            var deserialized = JsonConvert.DeserializeObject<TransactionMadeDTO>(json);
 
+                            return new ServiceResponse<Transaction>(0, _mapper.Map<Transaction>(deserialized), json);
+
+                        }
+                        else
+                            return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
+                    }
                 }
-                else
-                    return new ServiceResponse<Transaction>((int)response.StatusCode, null, await response.Content.ReadAsStringAsync());
             }
             catch (HttpRequestException ex)
             {
