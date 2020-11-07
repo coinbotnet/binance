@@ -1,17 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-   <ItemGroup>
-    <ProjectReference Include="..\Coinbot.Domain\Coinbot.Domain.csproj" />
-    <ProjectReference Include="..\Coinbot.Helpers\Coinbot.Helpers.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\Coinbot.Domain\Coinbot.Domain.csproj" />
+		<ProjectReference Include="..\Coinbot.Helpers\Coinbot.Helpers.csproj" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Automapper" Version="8.1.1" />
-    <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Automapper" Version="8.1.1" />
+		<PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
+	</ItemGroup>
 
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-  </PropertyGroup>
+	<Target Name="CopyCustomContent" AfterTargets="AfterBuild">
+		<Copy SourceFiles="bin\Debug\netstandard2.0\Coinbot.Binance.dll" DestinationFolder="..\Coinbot.Core\bin\Debug\netcoreapp2.2\Connectors" />
+	</Target>
+
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+	</PropertyGroup>
 
 </Project>
